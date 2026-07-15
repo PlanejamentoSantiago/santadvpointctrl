@@ -48,6 +48,18 @@ async function parsePdf(file: File): Promise<Employee[]> {
       adherenceScore: 0, isDisqualified: false, records: []
     };
 
+    const altIndex = block.indexOf("Alterações");
+    if (altIndex !== -1) {
+      const altText = block.slice(altIndex + "Alterações".length);
+      const altLines = altText.split("\n")
+        .map(l => l.trim())
+        .filter(l => l.length > 0 && !l.includes("TOTAIS") && !l.includes("BANCO DE HORAS") && !l.includes("Resumo") && !l.includes("Saldo") && !l.match(/^\d+:\d+/));
+      
+      if (altLines.length > 0) {
+        emp.alterations = altLines.map(l => l.replace(/^[-•]\s*/, ""));
+      }
+    }
+
     const lines = block.split(/\n|(?=\d{2}\/\d{2}\/\d{4} - [A-Z]{3})/);
     for (const line of lines) {
       const dateMatch = line.match(/^(\d{2}\/\d{2}\/\d{4}) - ([A-Z]{3})/);
@@ -64,6 +76,8 @@ async function parsePdf(file: File): Promise<Employee[]> {
         status = ["Férias"];
       } else if (line.includes("Folga")) {
         status = ["Folga"];
+      } else if (line.match(/Atestado/i)) {
+        status = ["Atestado Médico"];
       } else if (line.match(/FERIADO/i)) {
         status = ["Feriado"];
         const feriadoMatch = line.match(/Feriado:\s*([^\n]+)/i);
@@ -77,10 +91,29 @@ async function parsePdf(file: File): Promise<Employee[]> {
         out1 = clean(pMatch[1]);
         in2 = clean(pMatch[2]);
         out2 = clean(pMatch[3]);
+        
+        if (line.match(/HOME OFFICE/i)) {
+          status = ["Home Office"];
+        } else if (line.match(/Abonar quantidade de horas|Ajuste quantidade de horas|ABONADO/i)) {
+          status = ["Abonado"];
+        } else if (line.match(/ANIVERS[AÁ]RIO/i)) {
+          status = ["Aniversário"];
+        } else if (line.match(/Licença Casamento/i)) {
+          status = ["Licença Casamento"];
+        } else if (line.match(/INSS/i)) {
+          status = ["INSS"];
+        } else if (line.match(/DECLARAÇ[AÃ]O/i)) {
+          status = ["Declaração"];
+        } else {
+          const contentAfterDate = line.replace(/^(\d{2}\/\d{2}\/\d{4}) - ([A-Z]{3})\s*/, '').trim();
+          if (!contentAfterDate || /^[- \t]+$/.test(contentAfterDate)) {
+            status = ["Não Contabilizado"];
+          }
+        }
       }
 
       const dayOfWeek = getDayOfWeek(formattedDate);
-      const isOff = status.includes("Folga") || status.includes("Feriado") || status.includes("Férias") || dayOfWeek === "SAB" || dayOfWeek === "DOM";
+      const isOff = status.includes("Folga") || status.includes("Feriado") || status.includes("Férias") || status.includes("Atestado Médico") || status.includes("Home Office") || status.includes("Abonado") || status.includes("Aniversário") || status.includes("Licença Casamento") || status.includes("Não Contabilizado") || status.includes("INSS") || status.includes("Declaração") || dayOfWeek === "SAB" || dayOfWeek === "DOM";
 
       emp.records.push({
         id: `rec-${generateId()}`,

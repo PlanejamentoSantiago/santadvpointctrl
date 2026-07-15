@@ -159,7 +159,7 @@ export default function Dashboard() {
               <div className="flex-1 grid place-items-center text-center text-muted text-sm py-8">Nenhuma divergência crítica 🎉</div>
             )}
             {critical.map((emp) => (
-              <Link key={emp.id} href={`/colaborador/${emp.id}`}
+              <Link key={emp.id} href={`/colaborador/espelho?id=${emp.id}`}
                     className="group rounded-xl border p-4 flex items-start gap-3 transition-colors"
                     style={{ background: "var(--color-bad-soft)", borderColor: "color-mix(in srgb, var(--color-bad) 30%, transparent)" }}>
                 <div className="w-9 h-9 rounded-lg grid place-items-center flex-none"
@@ -172,7 +172,7 @@ export default function Dashboard() {
                     <ArrowUpRight className="w-3.5 h-3.5 text-muted-2 opacity-0 group-hover:opacity-100 transition-opacity" />
                   </div>
                   <div className="text-xs text-muted">{emp.department}</div>
-                  <div className="text-[11.5px] font-semibold text-bad mt-1.5">{emp.disqualificationReason}</div>
+                  <div className="text-[11.5px] font-semibold text-bad mt-1.5 line-clamp-2" title={emp.disqualificationReason}>{emp.disqualificationReason}</div>
                 </div>
               </Link>
             ))}

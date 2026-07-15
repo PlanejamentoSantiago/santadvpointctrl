@@ -46,7 +46,7 @@ export default function EmployeeSearch({ className, size = "md", autoFocus = fal
             results.map((emp) => (
               <button 
                 key={emp.id} 
-                onClick={() => { setSearch(""); router.push(`/colaborador/${emp.id}`); }} 
+                onClick={() => { setSearch(""); router.push(`/colaborador/espelho?id=${emp.id}`); }} 
                 className="w-full text-left px-3 py-3 rounded-lg hover:bg-surface-2 transition-colors text-sm text-ink flex items-center gap-3"
               >
                 <div className="w-8 h-8 flex-none rounded-md bg-brand-50 text-brand grid place-items-center text-xs font-bold">{initials(emp.name)}</div>

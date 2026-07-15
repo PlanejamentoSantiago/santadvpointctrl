@@ -48,8 +48,8 @@ function scoreDeparture(actual: number, target: number, tol: number): { score: n
 
 function processRecord(r: TimeRecord, tol: number, resolvedSchedule: string | null | undefined): TimeRecord {
   const statusArr = Array.isArray(r.status) ? r.status : [r.status];
-  // Se o relatório original já definiu explicitamente como Folga, Feriado ou Férias, é soberano
-  if (statusArr.includes("Folga") || statusArr.includes("Feriado") || statusArr.includes("Férias")) {
+  // Se o relatório original já definiu explicitamente como Folga, Feriado, Férias ou Atestado, é soberano
+  if (statusArr.includes("Folga") || statusArr.includes("Feriado") || statusArr.includes("Férias") || statusArr.includes("Atestado Médico") || statusArr.includes("Home Office") || statusArr.includes("Abonado") || statusArr.includes("Aniversário") || statusArr.includes("Licença Casamento") || statusArr.includes("Não Contabilizado") || statusArr.includes("INSS") || statusArr.includes("Declaração")) {
     return { ...r, expectedSchedule: statusArr[0], status: statusArr, adherencePercentage: 100 };
   }
 
@@ -57,9 +57,9 @@ function processRecord(r: TimeRecord, tol: number, resolvedSchedule: string | nu
   const schedStr = resolvedSchedule === undefined ? r.expectedSchedule : resolvedSchedule;
   const sched = parseSchedule(schedStr || undefined);
 
-  // dia não-útil (folga / feriado / férias)
+  // dia não-útil (folga / feriado / férias / atestado / home office / abonado / aniversário / licença casamento / não contabilizado / inss / declaração)
   if (!sched) {
-    const st: TimeRecord["status"] = statusArr.includes("Feriado") ? ["Feriado"] : statusArr.includes("Férias") ? ["Férias"] : ["Folga"];
+    const st: TimeRecord["status"] = statusArr.includes("Feriado") ? ["Feriado"] : statusArr.includes("Férias") ? ["Férias"] : statusArr.includes("Atestado Médico") ? ["Atestado Médico"] : statusArr.includes("Home Office") ? ["Home Office"] : statusArr.includes("Abonado") ? ["Abonado"] : statusArr.includes("Aniversário") ? ["Aniversário"] : statusArr.includes("Licença Casamento") ? ["Licença Casamento"] : statusArr.includes("INSS") ? ["INSS"] : statusArr.includes("Declaração") ? ["Declaração"] : statusArr.includes("Não Contabilizado") ? ["Não Contabilizado"] : ["Folga"];
     return { ...r, expectedSchedule: schedStr || "Folga", status: st, adherencePercentage: 100 };
   }
 
@@ -178,7 +178,7 @@ export function processEmployees(
     const faltas = records.filter((r) => r.status.includes("Falta"));
     const isDisqualified = faltas.length > 0;
 
-    const valid = records.filter((r) => !r.status.includes("Feriado") && !r.status.includes("Folga") && !r.status.includes("Férias"));
+    const valid = records.filter((r) => !r.status.includes("Feriado") && !r.status.includes("Folga") && !r.status.includes("Férias") && !r.status.includes("Atestado Médico") && !r.status.includes("Home Office") && !r.status.includes("Abonado") && !r.status.includes("Aniversário") && !r.status.includes("Licença Casamento") && !r.status.includes("Não Contabilizado") && !r.status.includes("INSS") && !r.status.includes("Declaração"));
     const avg = valid.length ? valid.reduce((a, r) => a + r.adherencePercentage, 0) / valid.length : 0;
 
     return {

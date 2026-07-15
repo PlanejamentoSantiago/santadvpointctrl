@@ -1,4 +1,4 @@
-export type DailyStatus = 'Ok' | 'Atraso Entrada' | 'Atraso Almoço' | 'Atraso Saída' | 'Saída Antecipada' | 'Falta' | 'Abonado' | 'Feriado' | 'Folga' | 'Férias';
+export type DailyStatus = 'Ok' | 'Presente' | 'Atraso Entrada' | 'Atraso Almoço' | 'Atraso Saída' | 'Saída Antecipada' | 'Falta' | 'Abonado' | 'Feriado' | 'Folga' | 'Férias' | 'Não Contabilizado' | 'Licença Casamento' | 'INSS' | 'Declaração';
 
 export interface TimeRecord {
   id: string;
@@ -33,6 +33,7 @@ export interface Employee {
   adherenceScore: number; // 0 to 100
   isDisqualified: boolean;
   disqualificationReason?: string;
+  alterations?: string[];
   records: TimeRecord[];
 }
 

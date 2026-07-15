@@ -1,7 +1,6 @@
 "use client";
 
 import { useMemo, useState, useEffect } from "react";
-import { useParams } from "next/navigation";
 import { processEmployees } from "@/lib/engine";
 import { useToast } from "@/components/ToastContext";
 import { mockExceptions } from "@/lib/mockData";
@@ -19,12 +18,16 @@ import Link from "next/link";
 
 const statusClass: Record<string, string> = {
   Ok: "status-good", "Atraso Entrada": "status-warn", "Atraso Almoço": "status-warn", "Atraso Saída": "status-warn", "Saída Antecipada": "status-warn", Falta: "status-bad",
-  Abonado: "status-info", Feriado: "status-neutral", Folga: "status-neutral", "Férias": "status-info"
+  Abonado: "status-info", Feriado: "status-neutral", Folga: "status-neutral", "Férias": "status-info", "Não Contabilizado": "status-neutral", "Licença Casamento": "status-info", INSS: "status-info", "Declaração": "status-info"
 };
 
 export default function EmployeePage() {
-  const params = useParams<{ id: string }>();
-  const id = params?.id ?? "emp-001";
+  // id vem da query string (?id=...), lido no cliente — compatível com site estático.
+  const [id, setId] = useState("emp-001");
+  useEffect(() => {
+    const p = new URLSearchParams(window.location.search).get("id");
+    if (p) setId(p);
+  }, []);
 
   // Abonos aplicados ao vivo nesta sessão (recordId -> motivo)
   const [overrides, setOverrides] = useState<Record<string, string>>({});
@@ -149,17 +152,11 @@ export default function EmployeePage() {
           </div>
           <div className="min-w-0">
             <h1 className="text-xl lg:text-2xl font-extrabold tracking-tight text-ink truncate">{fmtName(employee.name)}</h1>
-            <p className="text-muted text-sm mt-0.5">{employee.role} · {employee.department}</p>
-            {(() => {
-              const { group, auto } = effectiveGroup(cfg, employee);
-              if (!group) return null;
-              return (
-                <div className="chip mt-2" style={{ color: group.color, background: "color-mix(in srgb, " + group.color + " 12%, transparent)", borderColor: "color-mix(in srgb, " + group.color + " 30%, transparent)" }}>
-                  <span className="w-2 h-2 rounded-full" style={{ background: group.color }} />
-                  {group.name}{auto ? " · auto" : ""}
-                </div>
-              );
-            })()}
+            <p className="text-muted text-sm mt-0.5">{employee.role}</p>
+            <div className="chip mt-2 font-medium" style={{ color: "var(--color-brand)", background: "var(--color-brand-50)", borderColor: "color-mix(in srgb, var(--color-brand) 30%, transparent)" }}>
+              <span className="w-2 h-2 rounded-full" style={{ background: "var(--color-brand)" }} />
+              {employee.department}
+            </div>
           </div>
         </div>
         {employee.isDisqualified ? (
@@ -189,6 +186,20 @@ export default function EmployeePage() {
           );
         })}
       </div>
+
+      {/* Alterações */}
+      {employee.alterations && employee.alterations.length > 0 && (
+        <div className="card p-5 border-brand/20 bg-brand-50/30">
+          <h2 className="text-[15px] font-bold text-ink mb-3 flex items-center gap-2">
+            <Info className="w-4 h-4 text-brand" /> Alterações Registradas
+          </h2>
+          <ul className="list-disc list-inside text-[13px] font-medium text-ink-2 space-y-1.5 ml-1">
+            {employee.alterations.map((alt, idx) => (
+              <li key={idx}>{alt}</li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {/* Espelho diário */}
       <div>

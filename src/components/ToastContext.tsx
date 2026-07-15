@@ -1,11 +1,11 @@
 "use client";
 
 import { createContext, useContext, useState, useCallback, ReactNode, useEffect } from "react";
-import { CheckCircle2, AlertTriangle, X, Info } from "lucide-react";
+import { CheckCircle2, AlertTriangle, X, Info, Trophy } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 
-export type ToastType = "success" | "error" | "info";
+export type ToastType = "success" | "error" | "info" | "achievement";
 
 interface Toast {
   id: string;
@@ -55,19 +55,30 @@ export function ToastProvider({ children }: { children: ReactNode }) {
             <motion.div
               key={t.id}
               initial={{ opacity: 0, y: 20, scale: 0.95 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
+              animate={
+                t.type === "achievement"
+                  ? { opacity: 1, y: 0, scale: 1, rotate: [0, -3, 3, -3, 3, 0, 0, 0, 0, 0] }
+                  : { opacity: 1, y: 0, scale: 1 }
+              }
+              transition={
+                t.type === "achievement"
+                  ? { rotate: { repeat: Infinity, duration: 1.5, ease: "linear" } }
+                  : undefined
+              }
               exit={{ opacity: 0, y: 10, scale: 0.95 }}
               className={cn(
                 "pointer-events-auto flex items-start gap-3 p-4 rounded-xl shadow-[var(--sh-lg)] border w-[320px] backdrop-blur-md",
                 t.type === "success" && "bg-surface border-line text-ink",
                 t.type === "error" && "bg-bad-soft border-bad/30 text-ink",
-                t.type === "info" && "bg-brand-50 border-brand-100 text-ink"
+                t.type === "info" && "bg-brand-50 border-brand-100 text-ink",
+                t.type === "achievement" && "bg-surface border-[var(--color-gold)] text-ink shadow-[0_0_30px_rgba(234,179,8,0.25)]"
               )}
             >
               <div className="flex-none mt-0.5">
                 {t.type === "success" && <CheckCircle2 className="w-5 h-5 text-good" />}
                 {t.type === "error" && <AlertTriangle className="w-5 h-5 text-bad" />}
                 {t.type === "info" && <Info className="w-5 h-5 text-brand" />}
+                {t.type === "achievement" && <Trophy className="w-5 h-5 text-gold" />}
               </div>
               <div className="flex-1 min-w-0">
                 <div className="text-sm font-bold truncate">{t.title}</div>

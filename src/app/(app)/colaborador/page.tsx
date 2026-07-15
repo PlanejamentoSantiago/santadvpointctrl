@@ -95,7 +95,7 @@ export default function EspelhoPage() {
                   const { group, auto } = effectiveGroup(cfg, emp);
                   const isManual = !!cfg.employeeGroup[emp.id];
                   return (
-                    <tr key={emp.id} className="cursor-pointer hover:bg-surface-2 transition-colors group/row" onClick={() => router.push(`/colaborador/${emp.id}`)}>
+                    <tr key={emp.id} className="cursor-pointer hover:bg-surface-2 transition-colors group/row" onClick={() => router.push(`/colaborador/espelho?id=${emp.id}`)}>
                       <td>
                         <div className="flex items-center gap-3">
                           <span className="w-9 h-9 rounded-xl grid place-items-center text-[12px] font-bold text-brand bg-brand-50 flex-none group-hover/row:bg-white group-hover/row:shadow-[var(--sh-xs)] transition-all">{initials(emp.name)}</span>
@@ -144,7 +144,7 @@ export default function EspelhoPage() {
                             className={`btn btn-sm flex-none ${editingGroup === emp.id ? 'btn-outline border-brand text-brand shadow-sm' : 'btn-outline border-line text-ink-2 hover:border-brand-400 hover:text-brand'}`}>
                             <Pencil className="w-3.5 h-3.5" /> {editingGroup === emp.id ? "Cancelar" : "Editar"}
                           </button>
-                          <button onClick={(e) => { e.stopPropagation(); router.push(`/colaborador/${emp.id}`); }} title="Visualizar espelho"
+                          <button onClick={(e) => { e.stopPropagation(); router.push(`/colaborador/espelho?id=${emp.id}`); }} title="Visualizar espelho"
                             className="btn btn-sm flex-none btn-outline border-line text-ink-2 hover:border-brand hover:text-brand shadow-sm">
                             <Eye className="w-3.5 h-3.5" /> Ver espelho
                           </button>

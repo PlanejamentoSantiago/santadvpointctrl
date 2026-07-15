@@ -6,7 +6,12 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 export function fmtName(n: string) {
-  return n.split(" ").slice(0, 2).map((w) => w.charAt(0) + w.slice(1).toLowerCase()).join(" ");
+  const preps = ["da", "de", "do", "das", "dos", "e"];
+  return n.split(" ").filter(Boolean).map((w) => {
+    const lw = w.toLowerCase();
+    if (preps.includes(lw)) return lw;
+    return w.charAt(0).toUpperCase() + w.slice(1).toLowerCase();
+  }).join(" ");
 }
 
 export function initials(n: string) {

@@ -5,7 +5,7 @@ import { processEmployees, getTopRanking } from "@/lib/engine";
 import { mockExceptions } from "@/lib/mockData";
 import { useEmployees } from "@/lib/useEmployees";
 import { useParamsConfig } from "@/lib/params";
-import { Trophy, Medal, Award, Ban, Crown, ArrowRight, ArrowLeft, CalendarDays, X, Download, FileSpreadsheet, FileText, ChevronDown } from "lucide-react";
+import { Trophy, Medal, Award, Ban, Crown, ArrowRight, ArrowLeft, CalendarDays, X, Download, FileSpreadsheet, FileText, ChevronDown, Building2 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 import { fmtName, initials } from "@/lib/utils";
@@ -17,7 +17,6 @@ export default function RankingPage() {
   const top = getTopRanking(processed);
   const eligible = processed.filter((e) => !e.isDisqualified).sort((a, b) => b.adherenceScore - a.adherenceScore);
   const disqualified = processed.filter((e) => e.isDisqualified);
-  const [showFullRanking, setShowFullRanking] = useState(false);
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
   const [exportMenu, setExportMenu] = useState(false);
 
@@ -44,6 +43,25 @@ export default function RankingPage() {
     { emp: top[0], place: 1, h: "h-52", ring: "var(--color-gold)", soft: "var(--color-gold-soft)", icon: Crown, delay: 0 },
     { emp: top[2], place: 3, h: "h-32", ring: "var(--color-orange-600)", soft: "var(--color-orange-100)", icon: Award, delay: 0.3 },
   ];
+
+  // Cálculo por Departamento
+  const deptAdherence: Record<string, { total: number; count: number }> = {};
+  processed.forEach(emp => {
+    const dept = emp.department || "Geral";
+    if (!deptAdherence[dept]) deptAdherence[dept] = { total: 0, count: 0 };
+    deptAdherence[dept].total += emp.adherenceScore;
+    deptAdherence[dept].count += 1;
+  });
+
+  const deptRanking = Object.entries(deptAdherence)
+    .map(([dept, data]) => ({ dept, avg: data.total / data.count }))
+    .sort((a, b) => b.avg - a.avg);
+
+  // Período de apuração (primeira e última data)
+  const allDates = processed.flatMap(e => e.records.map(r => r.date)).sort();
+  const periodString = allDates.length > 0 
+    ? `${allDates[0].split("-").reverse().join("/")} a ${allDates[allDates.length - 1].split("-").reverse().join("/")}`
+    : "";
 
   const exportToCsv = () => {
     const header = "Nome;Departamento;Cargo;Aderência (%)";
@@ -91,13 +109,16 @@ export default function RankingPage() {
         <div>
           <div className="chip mb-3"><Trophy className="w-3.5 h-3.5" /> Gamificação</div>
           <h1 className="text-2xl lg:text-3xl font-extrabold tracking-tight text-ink">
-            {!showFullRanking ? "Top 3 Colaboradores" : "Ranking Completo"}
+            Ranking de Aderência
           </h1>
           <p className="text-muted mt-1">
-            {!showFullRanking 
-              ? "Pódio com o maior índice de aderência à jornada."
-              : "A lista completa de todos os colaboradores elegíveis no momento."}
+            Pódio e lista completa de todos os colaboradores do mês.
           </p>
+          {periodString && (
+            <p className="text-sm font-medium text-brand mt-2 bg-brand-50 border border-brand-200 px-3 py-1.5 rounded-lg inline-block shadow-sm">
+              Período de Apuração: {periodString}
+            </p>
+          )}
         </div>
         <div className="relative self-start sm:mt-0 print:hidden">
           <button onClick={() => setExportMenu(!exportMenu)} className="btn btn-outline">
@@ -120,17 +141,15 @@ export default function RankingPage() {
         </div>
       </header>
 
-      {/* Pódio ou Lista Completa */}
+      {/* Pódio */}
       <div className="card p-6 lg:p-10 relative overflow-hidden min-h-[420px]"
            style={{ background: "radial-gradient(700px 300px at 50% -30%, var(--color-brand-50), transparent 70%), var(--color-surface)" }}>
-        <AnimatePresence mode="wait">
-          {!showFullRanking ? (
-            <motion.div key="podium"
-              initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}
-              transition={{ duration: 0.2 }}
-            >
-              <div className="flex items-end justify-center gap-3 sm:gap-6">
-                {podium.map((p) =>
+        <motion.div key="podium"
+          initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3 }}
+        >
+          <div className="flex items-end justify-center gap-3 sm:gap-6">
+            {podium.map((p) =>
               p.emp ? (
                 <motion.div key={p.place}
                   initial={{ opacity: 0, y: 40 }} animate={{ opacity: 1, y: 0 }}
@@ -175,50 +194,40 @@ export default function RankingPage() {
                 </div>
               )
             )}
-              </div>
-              <button onClick={() => setShowFullRanking(true)} className="absolute bottom-4 right-4 btn btn-sm btn-ghost gap-2 text-brand">
-                Ver ranking completo <ArrowRight className="w-4 h-4" />
-              </button>
-            </motion.div>
-          ) : (
-            <motion.div key="list"
-              initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }}
-              transition={{ duration: 0.2 }}
-            >
-              <div className="flex items-center justify-between mb-6">
-                <h2 className="text-xl font-bold text-ink">Ranking Completo</h2>
-                <button onClick={() => setShowFullRanking(false)} className="btn btn-sm btn-ghost gap-2 text-muted">
-                  <ArrowLeft className="w-4 h-4" /> Voltar ao pódio
-                </button>
-              </div>
-              {eligible.length === 0 ? (
-                <div className="py-12 text-center flex flex-col items-center">
-                  <div className="w-16 h-16 rounded-full bg-surface-2 grid place-items-center mb-3">
-                    <Trophy className="w-6 h-6 text-muted-2" />
-                  </div>
-                  <div className="font-semibold text-ink">Nenhum dado no ranking</div>
-                  <div className="text-sm text-muted mt-1 max-w-sm">
-                    Quando os colaboradores registrarem aderência e não estiverem desclassificados, eles aparecerão aqui.
-                  </div>
+          </div>
+        </motion.div>
+      </div>
+
+      {/* Lista Completa de Aderentes */}
+      <div className="card p-6">
+        <h3 className="font-bold text-lg flex items-center gap-2.5 mb-4 text-ink">
+          <Award className="w-5 h-5 text-brand" /> Ranking Completo
+        </h3>
+        {eligible.length === 0 ? (
+          <div className="py-8 text-center flex flex-col items-center">
+            <div className="w-14 h-14 rounded-full bg-surface-2 grid place-items-center mb-3">
+              <Trophy className="w-5 h-5 text-muted-2" />
+            </div>
+            <div className="font-semibold text-ink">Nenhum dado no ranking</div>
+            <div className="text-sm text-muted mt-1 max-w-sm">
+              Quando os colaboradores registrarem aderência e não estiverem desclassificados, eles aparecerão aqui.
+            </div>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+            {eligible.map((emp, i) => (
+              <Link href={`/colaborador/espelho?id=${emp.id}`} key={emp.id} className="flex items-center gap-3 rounded-xl border border-line px-3 py-2.5 hover:bg-brand-50 transition-colors bg-surface-2">
+                <span className="w-7 h-7 rounded-lg grid place-items-center text-xs font-bold flex-none bg-surface-3 text-muted border border-line tabular-nums">{i + 1}</span>
+                <div className="w-9 h-9 rounded-lg grid place-items-center text-xs font-bold text-brand bg-brand-50 flex-none">{initials(emp.name)}</div>
+                <div className="min-w-0 flex-1">
+                  <div className="font-semibold text-sm text-ink truncate">{fmtName(emp.name)}</div>
+                  <div className="text-xs text-muted-2 truncate">{emp.department}</div>
                 </div>
-              ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 max-h-[500px] overflow-y-auto pr-2 pb-2">
-                  {eligible.map((emp, i) => (
-                    <Link href={`/colaborador/${emp.id}`} key={emp.id} className="flex items-center gap-3 rounded-xl border border-line px-3 py-2.5 hover:bg-brand-50 transition-colors bg-surface">
-                      <span className="w-7 h-7 rounded-lg grid place-items-center text-xs font-bold flex-none bg-surface-2 text-muted border border-line tabular-nums">{i + 1}</span>
-                      <div className="w-9 h-9 rounded-lg grid place-items-center text-xs font-bold text-brand bg-brand-50 flex-none">{initials(emp.name)}</div>
-                      <div className="min-w-0 flex-1">
-                        <div className="font-semibold text-sm text-ink truncate">{fmtName(emp.name)}</div>
-                        <div className="text-xs text-muted-2 truncate">{emp.department}</div>
-                      </div>
-                      <div className="flex-none font-black text-ink tabular-nums text-sm">{emp.adherenceScore.toFixed(1)}%</div>
-                    </Link>
-                  ))}
-                </div>
-              )}
-            </motion.div>
-          )}
-        </AnimatePresence>
+                <div className="flex-none font-black text-ink tabular-nums text-sm">{emp.adherenceScore.toFixed(1)}%</div>
+              </Link>
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
@@ -250,25 +259,53 @@ export default function RankingPage() {
           </div>
         </div>
 
-        {/* Desclassificados -> Inaderentes */}
+        {/* Melhores Departamentos */}
         <div className="card p-6">
-          <h3 className="font-bold text-lg flex items-center gap-2.5 mb-4 text-bad">
-            <Ban className="w-5 h-5" /> Inaderentes
+          <h3 className="font-bold text-lg flex items-center gap-2.5 mb-4">
+            <Building2 className="w-5 h-5 text-brand" /> Ranking por Departamento
           </h3>
-          <p className="text-xs text-muted mb-4">Colaboradores com faltas que impactam severamente a aderência.</p>
-          <div className="flex flex-col gap-2.5">
-            {disqualified.length === 0 && <div className="text-sm text-muted py-6 text-center">Nenhum inaderente.</div>}
-            {disqualified.map((emp) => (
-              <Link href={`/colaborador/${emp.id}`} key={emp.id} className="flex items-center justify-between gap-3 rounded-xl px-3.5 py-3 border border-line hover:bg-bad-soft transition-colors"
+          <p className="text-xs text-muted mb-4">Média geral de aderência agrupada por setor (inclui inaderentes).</p>
+          <div className="flex flex-col gap-2">
+            {deptRanking.length === 0 && <div className="text-sm text-muted py-6 text-center">Nenhum dado disponível.</div>}
+            {deptRanking.map((d, i) => (
+              <div key={d.dept} className="w-full flex items-center gap-3 rounded-xl border border-line px-3 py-2.5 bg-surface-2 hover:bg-surface-3 hover:border-brand-200 transition-all group">
+                <span className="w-7 h-7 rounded-lg grid place-items-center text-xs font-bold flex-none bg-surface text-muted border border-line tabular-nums group-hover:text-brand group-hover:border-brand-200 transition-colors">{i + 1}</span>
+                <div className="min-w-0 flex-1">
+                  <div className="font-semibold text-sm text-ink truncate">{d.dept}</div>
+                </div>
+                <div className="flex-none w-28">
+                  <div className="flex items-center justify-between text-[11px] mb-1">
+                    <span className="text-muted-2">média</span>
+                    <span className="font-bold text-ink tabular-nums">{d.avg.toFixed(1)}%</span>
+                  </div>
+                  <div className="h-1.5 rounded-full bg-line-2 overflow-hidden">
+                    <div className="h-full rounded-full" style={{ width: `${d.avg}%`, background: "linear-gradient(90deg, var(--color-brand-400), var(--color-brand))" }} />
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Desclassificados -> Inaderentes */}
+      <div className="card p-6">
+        <h3 className="font-bold text-lg flex items-center gap-2.5 mb-4 text-bad">
+          <Ban className="w-5 h-5" /> Inaderentes
+        </h3>
+        <p className="text-xs text-muted mb-4">Colaboradores com faltas que impactam severamente a aderência.</p>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+          {disqualified.length === 0 && <div className="text-sm text-muted py-6 col-span-full">Nenhum inaderente.</div>}
+          {disqualified.map((emp) => (
+              <Link href={`/colaborador/espelho?id=${emp.id}`} key={emp.id} className="flex items-center justify-between gap-3 rounded-xl px-3.5 py-3 border border-line hover:bg-bad-soft transition-colors"
                    style={{ background: "var(--color-surface-2)" }}>
                 <div className="min-w-0">
                   <div className="font-semibold text-sm text-ink truncate">{fmtName(emp.name)}</div>
                   <div className="text-xs text-muted-2">{emp.department}</div>
                 </div>
-                <span className="status status-bad flex-none">{emp.disqualificationReason}</span>
+                <div className="status status-bad text-xs py-1.5 whitespace-normal sm:max-w-[65%] leading-relaxed text-right">{emp.disqualificationReason}</div>
               </Link>
             ))}
-          </div>
         </div>
       </div>
 
