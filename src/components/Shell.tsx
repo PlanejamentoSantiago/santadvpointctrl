@@ -78,7 +78,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
         <div className="flex items-center justify-between px-2 pt-2">
           <Link href="/dashboard" className="flex items-center gap-2.5" onClick={() => setOpen(false)}>
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/logo.svg" alt="PointControl" className="w-10 h-10 shadow-[var(--sh-sm)] rounded-[11px]" />
+            <img src={`${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/logo.svg`} alt="PointControl" className="w-10 h-10 shadow-[var(--sh-sm)] rounded-[11px]" />
             <div className="font-extrabold text-xl tracking-tight">
               Point<span className="text-brand">Control</span>
             </div>

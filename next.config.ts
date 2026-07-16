@@ -12,6 +12,10 @@ const nextConfig: NextConfig = {
   images: { unoptimized: true },          // export não otimiza imagem
   trailingSlash: true,                    // rotas como /pasta/ (amigável ao Pages)
 
+  // basePath acessível no client: o Next NÃO prefixa <img src="/..."> de /public
+  // automaticamente (só o next/image faz). Usado para montar os caminhos dos assets.
+  env: { NEXT_PUBLIC_BASE_PATH: isProd ? repoBase : "" },
+
   // O app ainda é estágio inicial (mock data) e o tipo DailyStatus está
   // incompleto em relação aos valores usados. Isso NÃO afeta o runtime —
   // só evita que o build de produção trave por erro de tipo/lint.

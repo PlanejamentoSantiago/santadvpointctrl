@@ -48,7 +48,7 @@ export default function LoginPage() {
         <div className="flex flex-col items-center gap-6 max-w-[460px] text-center anim-up">
           <div className="flex items-center gap-3">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/logo.svg" alt="PointControl" className="w-14 h-14 rounded-2xl shadow-[var(--sh)]" />
+            <img src={`${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/logo.svg`} alt="PointControl" className="w-14 h-14 rounded-2xl shadow-[var(--sh)]" />
             <div className="text-left">
               <div className="text-2xl font-extrabold tracking-tight">
                 Point<span className="text-brand">Control</span>
@@ -96,7 +96,7 @@ export default function LoginPage() {
         <div className="login-card anim-up" style={{ animationDelay: "0.08s" }}>
           <div className="flex items-center gap-3 mb-7">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/logo.svg" alt="PointControl" className="w-12 h-12 rounded-xl shadow-[var(--sh-sm)]" />
+            <img src={`${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/logo.svg`} alt="PointControl" className="w-12 h-12 rounded-xl shadow-[var(--sh-sm)]" />
             <div>
               <div className="text-xl font-extrabold tracking-tight">Área de login</div>
               <div className="text-[12.5px] text-muted">Acesso à plataforma</div>
