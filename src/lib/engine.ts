@@ -106,50 +106,57 @@ function processRecord(r: TimeRecord, opts: ScoreOpts, resolvedSchedule: string 
     return { ...r, expectedSchedule, status: ["Falta"], adherencePercentage: 0 };
   }
 
+  // `null` = o relatório escreveu "Falta" na coluna, ou seja, batida realmente
+  // ausente. Menos batidas do que a jornada prevê NÃO é falta: quem não tira a
+  // pausa simplesmente não bate. Só o nº ímpar denuncia batida esquecida.
+  const t = p.filter((x): x is number => x != null);
+  if (p.some((x) => x == null) || t.length < 2 || t.length % 2 !== 0) {
+    return { ...r, expectedSchedule, status: ["Falta"], adherencePercentage: 0 };
+  }
+
+  // folgas previstas entre os blocos: [10, 60, 10] na cobrança, [60] no adm
+  const gaps = Array.from({ length: n - 1 }, (_, k) => sched[k + 1].start - sched[k].end);
+  const lunchAllowance = gaps.length ? Math.max(...gaps) : 0;
+  const shortGaps = gaps.filter((g) => g <= breakMaxMinutes);
+  const breakAllowance = shortGaps.length ? Math.min(...shortGaps) : breakMaxMinutes;
+
   const scores: number[] = [];
-  let incomplete = false;
   const tags: import("../types").DailyStatus[] = [];
 
   // 1) entrada — alvo = início do primeiro bloco
-  if (p[0] == null) { incomplete = true; scores.push(0); }
-  else {
-    const s = scoreLate(p[0], sched[0].start, tol, decay);
-    scores.push(s);
-    if (s < 100) tags.push("Atraso Entrada");
-  }
+  const sIn = scoreLate(t[0], sched[0].start, tol, decay);
+  scores.push(sIn);
+  if (sIn < 100) tags.push("Atraso Entrada");
 
-  // 2) cada intervalo (pausa ou almoço): alvo = batida REAL de saída + duração prevista
-  for (let k = 0; k < n - 1; k++) {
-    const out = p[2 * k + 1];       // saída do bloco k
-    const back = p[2 * k + 2];      // volta do intervalo k
-    const dur = sched[k + 1].start - sched[k].end;
-    // pausa curta (10 min) é estrita; almoço usa a tolerância normal
-    const isBreak = dur <= breakMaxMinutes;
-    const iTol = isBreak ? breakTolerance : tol;
+  // 2) intervalos REALMENTE batidos (os pares do miolo). A pausa é opcional e
+  //    sai do horário nominal à vontade (visto no relatório: pausa às 12:45),
+  //    então não dá para casar por posição. Classifica pelo tamanho: o maior
+  //    intervalo do dia é o almoço, os outros são pausa.
+  const taken = Array.from({ length: (t.length - 2) / 2 }, (_, i) => ({
+    out: t[2 * i + 1], back: t[2 * i + 2], dur: t[2 * i + 2] - t[2 * i + 1],
+  }));
+  const lunchIdx = taken.reduce((best, g, i) => (g.dur > taken[best].dur ? i : best), 0);
 
-    if (out == null || back == null) { incomplete = true; scores.push(0); continue; }
-    const s = scoreLate(back, out + dur, iTol, decay);
+  taken.forEach((g, i) => {
+    const isLunch = i === lunchIdx;
+    const allow = isLunch ? lunchAllowance : breakAllowance;
+    const s = scoreLate(g.back, g.out + allow, isLunch ? tol : breakTolerance, decay);
     scores.push(s);
-    if (s < 100) tags.push(isBreak ? "Atraso Pausa" : "Atraso Almoço");
-  }
+    if (s < 100) tags.push(isLunch ? "Atraso Almoço" : "Atraso Pausa");
+  });
 
   // 3) saída final — alvo = fim do último bloco
-  const last = p[2 * n - 1];
-  if (last == null) { incomplete = true; scores.push(0); }
-  else {
-    const res = scoreDeparture(last, sched[n - 1].end, tol, earlyGrace, decay);
-    scores.push(res.score);
-    if (res.type === "Early" && res.score < 100) tags.push("Saída Antecipada");
-    else if (res.type === "Late" && res.score < 100) tags.push("Atraso Saída");
-  }
+  const res = scoreDeparture(t[t.length - 1], sched[n - 1].end, tol, earlyGrace, decay);
+  scores.push(res.score);
+  if (res.type === "Early" && res.score < 100) tags.push("Saída Antecipada");
+  else if (res.type === "Late" && res.score < 100) tags.push("Atraso Saída");
 
   const adherence = scores.length ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : 0;
 
-  // turno incompleto = falta parcial; senão, sem tag = dia limpo
-  const finalTags: import("../types").DailyStatus[] =
-    incomplete ? ["Falta"] : tags.length === 0 ? ["Ok"] : tags;
-
-  return { ...r, expectedSchedule, status: finalTags, adherencePercentage: adherence };
+  return {
+    ...r, expectedSchedule, adherencePercentage: adherence,
+    status: tags.length === 0 ? ["Ok"] : tags,
+  };
 }
 
 /* ============================ processamento do colaborador ============================ */

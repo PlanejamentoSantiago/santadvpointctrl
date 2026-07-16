@@ -62,6 +62,12 @@ async function parsePdf(file: File): Promise<Employee[]> {
     text += strings.join(" ") + "\n";
   }
 
+  return parseReportText(text);
+}
+
+/** Texto cru do relatório -> colaboradores. Separado de parsePdf para poder ser
+ *  exercitado fora do navegador (o pdf.js só entrega o texto). */
+export function parseReportText(text: string): Employee[] {
   const employees: Employee[] = [];
   const blocks = text.split("NOME DO FUNCIONÁRIO:").slice(1);
 
@@ -158,12 +164,9 @@ async function parsePdf(file: File): Promise<Employee[]> {
       const previsto = parsePrevisto(line);
       const schedOfDay = previsto ?? week[dayOfWeek] ?? emp.expectedSchedule;
 
-      // a jornada diz quantas batidas o dia deveria ter (2 por bloco)
-      const expectedPunches = (schedOfDay.match(/\d{1,2}:\d{2}/g) || []).length;
-      if (expectedPunches && punches.length < expectedPunches) {
-        punches = [...punches, ...Array(expectedPunches - punches.length).fill(null)];
-      }
-
+      // NÃO completar com null até o nº de batidas da jornada: as pausas são
+      // opcionais. Menos batidas = pausa não tirada, não batida faltando.
+      // `null` aqui só existe quando o relatório escreve "Falta" na coluna.
       emp.records.push({
         id: `rec-${generateId()}`,
         employeeId: emp.id,
