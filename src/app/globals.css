@@ -276,13 +276,27 @@ html[data-theme='dark'] .seg button.on { background: color-mix(in srgb, var(--co
   box-shadow: var(--sh-lg);
 }
 .login-field {
+  /* --field-bg segue o tema: no escuro NÃO pode virar #fff, senão o texto
+     (--color-ink, quase branco) some no fundo branco. */
+  --field-bg: var(--color-surface-2);
   @apply flex items-center gap-2.5 rounded-xl px-3.5;
-  background: var(--color-surface-2); border: 1px solid var(--color-line); color: var(--color-muted);
+  background: var(--field-bg); border: 1px solid var(--color-line); color: var(--color-muted);
   transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
 }
-.login-field:focus-within { border-color: var(--color-brand-500); box-shadow: 0 0 0 4px var(--blue-glow); background: #fff; color: var(--color-brand); }
+.login-field:focus-within { --field-bg: var(--color-surface); border-color: var(--color-brand-500); box-shadow: 0 0 0 4px var(--blue-glow); color: var(--color-brand-500); }
 .login-field input { flex: 1; border: none; outline: none; background: transparent; padding: 12px 0; font-size: 14px; color: var(--color-ink); }
 .login-field input::placeholder { color: var(--color-muted-2); }
+
+/* O Chrome pinta o campo preenchido com fundo claro próprio e ignora o tema.
+   Reescreve a cor do texto e cobre o fundo dele com a cor real do campo. */
+.login-field input:-webkit-autofill,
+.login-field input:-webkit-autofill:hover,
+.login-field input:-webkit-autofill:focus {
+  -webkit-text-fill-color: var(--color-ink);
+  -webkit-box-shadow: 0 0 0 1000px var(--field-bg) inset;
+  caret-color: var(--color-ink);
+  transition: background-color 9999s ease-out 0s;
+}
 
 @media (max-width: 900px) {
   .login-wrap { grid-template-columns: 1fr; }
