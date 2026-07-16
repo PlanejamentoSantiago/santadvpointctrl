@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { User, Lock, LogIn, AlertTriangle, Clock, BarChart3 } from "lucide-react";
+import { Mail, Lock, LogIn, AlertTriangle, Clock, BarChart3 } from "lucide-react";
 import ThemeToggle from "@/components/ThemeToggle";
+import { supabase } from "@/lib/supabase";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -12,20 +13,35 @@ export default function LoginPage() {
   const [erro, setErro] = useState<string | null>(null);
   const [carregando, setCarregando] = useState(false);
 
-  function submit(e: React.FormEvent) {
+  // Já logado? vai direto pro dashboard
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => {
+      if (data.session) router.replace("/dashboard");
+    });
+  }, [router]);
+
+  async function submit(e: React.FormEvent) {
     e.preventDefault();
     setErro(null);
+
+    if (!user.trim() || !senha) {
+      setErro("Informe e-mail e senha.");
+      return;
+    }
+
     setCarregando(true);
-    // MVP: autenticação mockada — qualquer usuário/senha entra.
-    setTimeout(() => {
-      if (!user.trim() || !senha) {
-        setErro("Informe usuário e senha.");
-        setCarregando(false);
-        return;
-      }
-      try { sessionStorage.setItem("pc-auth", user.trim()); } catch {}
-      router.push("/dashboard");
-    }, 550);
+    const { error } = await supabase.auth.signInWithPassword({
+      email: user.trim(),
+      password: senha,
+    });
+
+    if (error) {
+      setErro("E-mail ou senha inválidos.");
+      setCarregando(false);
+      return;
+    }
+
+    router.replace("/dashboard");
   }
 
   return (
@@ -105,8 +121,8 @@ export default function LoginPage() {
 
           <form onSubmit={submit} className="flex flex-col gap-3">
             <label className="login-field">
-              <User className="w-4 h-4" />
-              <input value={user} onChange={(e) => setUser(e.target.value)} placeholder="Usuário" autoFocus autoComplete="username" />
+              <Mail className="w-4 h-4" />
+              <input type="email" value={user} onChange={(e) => setUser(e.target.value)} placeholder="E-mail" autoFocus autoComplete="username" />
             </label>
             <label className="login-field">
               <Lock className="w-4 h-4" />

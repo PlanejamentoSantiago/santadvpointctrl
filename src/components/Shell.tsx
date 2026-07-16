@@ -9,6 +9,7 @@ import {
 import ThemeToggle from "@/components/ThemeToggle";
 import PageTransition from "@/components/PageTransition";
 import { useToast } from "@/components/ToastContext";
+import { supabase } from "@/lib/supabase";
 
 const NAV = [
   { href: "/dashboard", label: "Dashboard", icon: BarChart3, section: "Gestão" },
@@ -61,12 +62,12 @@ export default function Shell({ children }: { children: React.ReactNode }) {
   const crumb =
     Object.entries(CRUMB).find(([k]) => pathname.startsWith(k))?.[1] ?? "PointControl";
 
-  function logout() {
-    try { 
-      sessionStorage.removeItem("pc-auth");
+  async function logout() {
+    try {
       sessionStorage.removeItem("pc-farm-open");
     } catch {}
-    router.push("/");
+    await supabase.auth.signOut();
+    router.replace("/");
   }
 
   const sections = ["Gestão", "Dados"];
