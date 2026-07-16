@@ -21,7 +21,6 @@ const nextConfig: NextConfig = {
   // só evita que o build de produção trave por erro de tipo/lint.
   // TODO(PointControl): completar o type DailyStatus e reativar a checagem.
   typescript: { ignoreBuildErrors: true },
-  eslint: { ignoreDuringBuilds: true },
 };
 
 export default nextConfig;

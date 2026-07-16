@@ -14,7 +14,11 @@ function getDayOfWeek(dateStr: string) {
 
 async function parsePdf(file: File): Promise<Employee[]> {
   const pdfjsLib = await import("pdfjs-dist");
-  pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.mjs`;
+  // O worker do pdf.js v4+ é um ES module, e o navegador só permite module
+  // workers da MESMA origem — por isso ele é servido do próprio site
+  // (copiado para /public no build) em vez de um CDN externo.
+  pdfjsLib.GlobalWorkerOptions.workerSrc =
+    `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/pdf.worker.min.mjs`;
 
   const arrayBuffer = await file.arrayBuffer();
   const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
