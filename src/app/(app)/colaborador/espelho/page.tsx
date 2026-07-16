@@ -12,6 +12,13 @@ import {
   X, Sparkles, ChevronLeft, Info
 } from "lucide-react";
 import { cn, fmtName } from "@/lib/utils";
+
+/**
+ * Colunas de batida do espelho. O administrativo tem 4; a cobrança tem 8
+ * (pausas de 10 min), então a tabela se adapta ao maior dia do período.
+ */
+const punchCols = (records: TimeRecord[]) =>
+  Array.from({ length: Math.max(4, ...records.map((r) => r.punches?.length ?? 0)) }, (_, i) => i);
 import EmployeeSearch from "@/components/EmployeeSearch";
 import Link from "next/link";
 
@@ -115,7 +122,7 @@ export default function EmployeePage() {
       return "As divergências deste dia foram abonadas manualmente.";
     }
     if (r.status.includes('Falta')) {
-      if (!r.checkIn1 && !r.checkOut1 && !r.checkIn2 && !r.checkOut2) return "Falta integral: nenhum registro de ponto efetuado no dia.";
+      if ((r.punches ?? []).every((p) => !p)) return "Falta integral: nenhum registro de ponto efetuado no dia.";
       return "Falta parcial: turnos incompletos ou não registrados resultam em zero de aderência.";
     }
     const infracoes = r.status.filter(s => s.startsWith("Atraso") || s === "Saída Antecipada");
@@ -212,7 +219,9 @@ export default function EmployeePage() {
               <thead>
                 <tr>
                   <th>Data</th><th>Status</th><th>Jornada prevista</th>
-                  <th>Ent. 1</th><th>Saí. 1</th><th>Ent. 2</th><th>Saí. 2</th>
+                  {punchCols(employee.records).map((i) => (
+                    <th key={i}>{i % 2 === 0 ? `Ent. ${i / 2 + 1}` : `Saí. ${(i + 1) / 2}`}</th>
+                  ))}
                   <th>Aderência</th><th className="text-right">Ação</th>
                 </tr>
               </thead>
@@ -238,10 +247,9 @@ export default function EmployeePage() {
                       )}
                     </td>
                     <td className="text-muted whitespace-nowrap text-[12.5px]">{r.expectedSchedule}</td>
-                    <td className="tabular-nums">{r.checkIn1 ?? "—"}</td>
-                    <td className="tabular-nums">{r.checkOut1 ?? "—"}</td>
-                    <td className="tabular-nums">{r.checkIn2 ?? "—"}</td>
-                    <td className="tabular-nums">{r.checkOut2 ?? "—"}</td>
+                    {punchCols(employee.records).map((i) => (
+                      <td key={i} className="tabular-nums">{r.punches?.[i] ?? "—"}</td>
+                    ))}
                     <td>
                       <div className="flex items-center gap-2">
                         <div className="w-16 h-1.5 rounded-full bg-line-2 overflow-hidden">

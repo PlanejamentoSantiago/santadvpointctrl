@@ -12,12 +12,41 @@ export interface WorkGroup {
   id: string;
   name: string;
   color: string;
+  /** Minutos de tolerância: dentro dela a batida vale 100%. */
   toleranceMinutes: number;
+  /**
+   * Minutos que o colaborador pode sair ANTES do fim da jornada ainda valendo 100%.
+   * Só o pessoal 08–18 tem essa folga (3 min → 17:57). Cobrança fica em 0 (mais rígido).
+   */
+  departureEarlyGrace: number;
   scheduleByDay: Record<Weekday, string | null>;
 }
 
+export interface GlobalParams {
+  toleranceMinutes: number;
+  /** Quanto a batida perde por minuto DEPOIS de estourar a tolerância. */
+  decayPerMinute: number;
+  /** Intervalo até X min é "pausa" (ex.: os 10 min da cobrança). Acima disso é almoço. */
+  breakMaxMinutes: number;
+  /**
+   * Tolerância das pausas curtas. 0 = estrito: bateu 09:35, tem até 09:45;
+   * 09:46 já atrasa. (O almoço continua usando a tolerância normal.)
+   */
+  breakTolerance: number;
+  /**
+   * Nota mínima do DIA para ele contar como "dia pontual".
+   * 100 = cravado (só 100% conta); 90 = perdoa um deslize pequeno no dia.
+   * Nos dados reais, 100 deixa quase ninguém pontual — por isso o default é 90.
+   */
+  punctualDayMargin: number;
+  /** % mínimo de dias pontuais para ser classificado como "Pontual". */
+  punctualThreshold: number;
+  /** % mínimo de dias pontuais para ser "Regular" (abaixo disso, "Irregular"). */
+  regularThreshold: number;
+}
+
 export interface ParamsConfig {
-  global: { toleranceMinutes: number };
+  global: GlobalParams;
   groups: WorkGroup[];
   /** empId -> groupId (atribuição manual; ausente = detecção automática) */
   employeeGroup: Record<string, string>;
@@ -29,15 +58,27 @@ const week = (segQui: string, sex: string, sab: string | null = null, dom: strin
   ({ SEG: segQui, TER: segQui, QUA: segQui, QUI: segQui, SEX: sex, SAB: sab, DOM: dom });
 
 export const DEFAULT_GROUPS: WorkGroup[] = [
-  { id: "g-adm", name: "Administrativo", color: "#2563eb", toleranceMinutes: 2, scheduleByDay: week("08:00-12:00 13:00-18:00", "08:00-12:00 13:00-17:00") },
-  { id: "g-tec", name: "Tecnologia", color: "#7c3aed", toleranceMinutes: 2, scheduleByDay: week("09:00-12:00 13:00-18:00", "09:00-12:00 13:00-18:00") },
-  { id: "g-dir", name: "Diretoria", color: "#0f9d76", toleranceMinutes: 2, scheduleByDay: week("08:00-12:00 14:00-18:00", "08:00-12:00 14:00-18:00") },
-  { id: "g-ccm", name: "Call Center — Manhã", color: "#c98a2b", toleranceMinutes: 2, scheduleByDay: week("08:00-12:00 13:00-16:25", "08:00-12:00 13:00-16:25") },
-  { id: "g-cct", name: "Call Center — Tarde", color: "#e0564f", toleranceMinutes: 2, scheduleByDay: week("09:45-12:45 13:45-18:00", "09:45-12:45 13:45-18:00") },
+  // único grupo com folga de saída (17:57 ainda vale 100%)
+  { id: "g-adm", name: "Administrativo", color: "#2563eb", toleranceMinutes: 2, departureEarlyGrace: 3, scheduleByDay: week("08:00-12:00 13:00-18:00", "08:00-12:00 13:00-17:00") },
+  { id: "g-tec", name: "Tecnologia", color: "#7c3aed", toleranceMinutes: 2, departureEarlyGrace: 0, scheduleByDay: week("09:00-12:00 13:00-18:00", "09:00-12:00 13:00-18:00") },
+  { id: "g-dir", name: "Diretoria", color: "#0f9d76", toleranceMinutes: 2, departureEarlyGrace: 0, scheduleByDay: week("08:00-12:00 14:00-18:00", "08:00-12:00 14:00-18:00") },
+  // cobrança: 4 blocos — pausa 10min (10:00→10:10), almoço 1h (12:00→13:00), pausa 10min (14:30→14:40)
+  {
+    id: "g-cob", name: "Cobrança 08:00–16:12", color: "#c98a2b",
+    toleranceMinutes: 2, departureEarlyGrace: 0,
+    scheduleByDay: week(
+      "08:00-10:00 10:10-12:00 13:00-14:30 14:40-16:12",
+      "08:00-10:00 10:10-12:00 13:00-14:30 14:40-16:12",
+    ),
+  },
 ];
 
 export const DEFAULT_PARAMS: ParamsConfig = {
-  global: { toleranceMinutes: 2 },
+  global: {
+    toleranceMinutes: 2, decayPerMinute: 5,
+    breakMaxMinutes: 15, breakTolerance: 0,
+    punctualDayMargin: 90, punctualThreshold: 80, regularThreshold: 60,
+  },
   groups: DEFAULT_GROUPS,
   employeeGroup: {},
 };
@@ -50,9 +91,21 @@ export function loadParams(): ParamsConfig {
     const raw = localStorage.getItem(KEY);
     if (!raw) return DEFAULT_PARAMS;
     const p = JSON.parse(raw);
+    // grupos salvos antes podem não ter os campos novos — completa pelo default de mesmo id
+    const groups: WorkGroup[] = Array.isArray(p.groups) && p.groups.length
+      ? p.groups.map((g: Partial<WorkGroup>) => {
+          const base = DEFAULT_GROUPS.find((d) => d.id === g.id);
+          return {
+            ...g,
+            toleranceMinutes: g.toleranceMinutes ?? base?.toleranceMinutes ?? 2,
+            departureEarlyGrace: g.departureEarlyGrace ?? base?.departureEarlyGrace ?? 0,
+          } as WorkGroup;
+        })
+      : DEFAULT_GROUPS;
+
     return {
       global: { ...DEFAULT_PARAMS.global, ...(p.global || {}) },
-      groups: Array.isArray(p.groups) && p.groups.length ? p.groups : DEFAULT_GROUPS,
+      groups,
       employeeGroup: p.employeeGroup || {},
     };
   } catch {

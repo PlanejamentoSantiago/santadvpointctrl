@@ -11,42 +11,67 @@ export function toMinutes(t?: string | null): number | null {
   return parseInt(m[1], 10) * 60 + parseInt(m[2], 10);
 }
 
-export interface ParsedSchedule {
+/** Um bloco de trabalho contínuo (entre uma entrada e a saída seguinte). */
+export interface ScheduleBlock {
   start: number;
-  lunchOut?: number;
-  lunchIn?: number;
   end: number;
 }
 
-/** "08:00-12:00 13:00-18:00" -> {start,lunchOut,lunchIn,end}. null = folga/feriado. */
-export function parseSchedule(s?: string): ParsedSchedule | null {
+/**
+ * "08:00-12:00 13:00-18:00"                       -> 2 blocos (administrativo)
+ * "08:00-10:00 10:10-12:00 13:00-14:30 14:40-16:12" -> 4 blocos (cobrança, com pausas)
+ * null = folga/feriado.
+ */
+export function parseSchedule(s?: string): ScheduleBlock[] | null {
   if (!s) return null;
-  const times = (s.match(/\d{1,2}:\d{2}/g) || []).map((t) => toMinutes(t)!);
-  if (times.length >= 4) return { start: times[0], lunchOut: times[1], lunchIn: times[2], end: times[3] };
-  if (times.length === 2) return { start: times[0], end: times[1] };
-  return null;
+  const t = (s.match(/\d{1,2}:\d{2}/g) || []).map((x) => toMinutes(x)!);
+  if (t.length < 2 || t.length % 2 !== 0) return null;
+  const blocks: ScheduleBlock[] = [];
+  for (let i = 0; i < t.length; i += 2) blocks.push({ start: t[i], end: t[i + 1] });
+  return blocks;
 }
 
 /* ============================ pontuação das batidas ============================ */
 
-/** Atraso: no alvo (ou antes) = 100; decai linear; ao atingir a tolerância = 0. */
-function scoreLate(actual: number, target: number, tol: number): number {
-  if (actual <= target) return 100;
-  if (actual >= target + tol) return 0;
-  return Math.round(100 * (1 - (actual - target) / tol));
+/**
+ * Entrada / volta do almoço.
+ * Dentro da tolerância vale 100% (08:00–08:02 = 100). Passando dela, a batida
+ * continua válida mas perde `decay`% por minuto (5%/min → zera ~20 min depois).
+ */
+function scoreLate(actual: number, target: number, tol: number, decay: number): number {
+  if (actual <= target + tol) return 100;
+  return Math.max(0, Math.round(100 - (actual - target - tol) * decay));
 }
 
-/** Saída: janela de (alvo - 3m) até alvo = 100; sair antes da tolerância = 0; sair depois do alvo reduz até tol. */
-function scoreDeparture(actual: number, target: number, tol: number): { score: number, type: 'Early' | 'Late' | 'Ok' } {
-  if (actual >= target - 3 && actual <= target) return { score: 100, type: 'Ok' }; // 3 minutos cravados para saída
-  if (actual < target - 3) return { score: 0, type: 'Early' }; // Saída muito antecipada
-  if (actual >= target + tol) return { score: 0, type: 'Late' }; // Saída atrasada (hora extra indevida)
-  return { score: Math.round(100 * (1 - (actual - target) / tol)), type: 'Late' };
+/**
+ * Saída. Janela 100% = [alvo - earlyGrace, alvo + tol].
+ * Ex.: 08–18 com grace 3 e tol 2 → 17:57 às 18:02 = 100%.
+ * Cobrança (grace 0) → 18:00 às 18:02. Fora da janela decai `decay`% por minuto.
+ */
+function scoreDeparture(
+  actual: number, target: number, tol: number, earlyGrace: number, decay: number,
+): { score: number; type: "Early" | "Late" | "Ok" } {
+  const from = target - earlyGrace;
+  const to = target + tol;
+  if (actual >= from && actual <= to) return { score: 100, type: "Ok" };
+  if (actual < from) return { score: Math.max(0, Math.round(100 - (from - actual) * decay)), type: "Early" };
+  return { score: Math.max(0, Math.round(100 - (actual - to) * decay)), type: "Late" };
 }
 
 /* ============================ processamento de um dia ============================ */
 
-function processRecord(r: TimeRecord, tol: number, resolvedSchedule: string | null | undefined): TimeRecord {
+interface ScoreOpts {
+  tol: number;
+  decay: number;
+  earlyGrace: number;
+  /** Intervalos até esta duração são "pausa" (estrita). Acima disso é almoço. */
+  breakMaxMinutes: number;
+  /** Tolerância das pausas curtas (0 = bateu 9:35, tem até 9:45; 9:46 já atrasa). */
+  breakTolerance: number;
+}
+
+function processRecord(r: TimeRecord, opts: ScoreOpts, resolvedSchedule: string | null | undefined): TimeRecord {
+  const { tol, decay, earlyGrace, breakMaxMinutes, breakTolerance } = opts;
   const statusArr = Array.isArray(r.status) ? r.status : [r.status];
   // Se o relatório original já definiu explicitamente como Folga, Feriado, Férias ou Atestado, é soberano
   if (statusArr.includes("Folga") || statusArr.includes("Feriado") || statusArr.includes("Férias") || statusArr.includes("Atestado Médico") || statusArr.includes("Home Office") || statusArr.includes("Abonado") || statusArr.includes("Aniversário") || statusArr.includes("Licença Casamento") || statusArr.includes("Não Contabilizado") || statusArr.includes("INSS") || statusArr.includes("Declaração")) {
@@ -71,68 +96,60 @@ function processRecord(r: TimeRecord, tol: number, resolvedSchedule: string | nu
     return { ...r, expectedSchedule, status: ["Abonado"], adherencePercentage: 100 };
   }
 
-  const in1 = toMinutes(r.checkIn1);
-  const out1 = toMinutes(r.checkOut1);
-  const in2 = toMinutes(r.checkIn2);
-  const out2 = toMinutes(r.checkOut2);
-  const hasLunch = sched.lunchOut != null && sched.lunchIn != null;
+  // batidas em ordem; cai no legado se o registro for antigo (sem `punches`)
+  const raw = r.punches ?? [r.checkIn1, r.checkOut1, r.checkIn2, r.checkOut2];
+  const p = raw.map(toMinutes);
+  const n = sched.length; // nº de blocos: 2 = adm, 4 = cobrança
 
   // falta integral: não bateu nada
-  if (in1 == null && out1 == null && in2 == null && out2 == null) {
+  if (p.every((x) => x == null)) {
     return { ...r, expectedSchedule, status: ["Falta"], adherencePercentage: 0 };
   }
 
   const scores: number[] = [];
   let incomplete = false;
-  let hasAtraso = false;
-  let hasSaidaAntecipada = false;
-  
-  let tags: import("../types").DailyStatus[] = [];
+  const tags: import("../types").DailyStatus[] = [];
 
-  // 1) entrada da manhã
-  if (in1 == null) { incomplete = true; scores.push(0); }
+  // 1) entrada — alvo = início do primeiro bloco
+  if (p[0] == null) { incomplete = true; scores.push(0); }
   else {
-    const s = scoreLate(in1, sched.start, tol);
+    const s = scoreLate(p[0], sched[0].start, tol, decay);
     scores.push(s);
-    if (s === 0) tags.push("Atraso Entrada");
+    if (s < 100) tags.push("Atraso Entrada");
   }
 
-  if (hasLunch) {
-    const lunchDur = sched.lunchIn! - sched.lunchOut!;
-    // 2) volta do almoço — alvo = saída 1 real + duração do almoço
-    if (out1 == null) incomplete = true;
-    if (in2 == null) { incomplete = true; scores.push(0); }
-    else if (out1 != null) {
-      const s = scoreLate(in2, out1 + lunchDur, tol);
-      scores.push(s);
-      if (s === 0) tags.push("Atraso Almoço");
-    }
-    else scores.push(0);
-    // 3) saída final
-    if (out2 == null) { incomplete = true; scores.push(0); }
-    else {
-      const res = scoreDeparture(out2, sched.end, tol);
-      scores.push(res.score);
-      if (res.type === 'Early' && res.score === 0) tags.push("Saída Antecipada");
-      else if (res.type === 'Late' && res.score === 0) tags.push("Atraso Saída"); // Hora extra conta como atraso genérico para status
-    }
-  } else {
-    // jornada sem almoço: saída = out1
-    if (out1 == null) { incomplete = true; scores.push(0); }
-    else {
-      const res = scoreDeparture(out1, sched.end, tol);
-      scores.push(res.score);
-      if (res.type === 'Early' && res.score === 0) tags.push("Saída Antecipada");
-      else if (res.type === 'Late' && res.score === 0) tags.push("Atraso Saída");
-    }
+  // 2) cada intervalo (pausa ou almoço): alvo = batida REAL de saída + duração prevista
+  for (let k = 0; k < n - 1; k++) {
+    const out = p[2 * k + 1];       // saída do bloco k
+    const back = p[2 * k + 2];      // volta do intervalo k
+    const dur = sched[k + 1].start - sched[k].end;
+    // pausa curta (10 min) é estrita; almoço usa a tolerância normal
+    const isBreak = dur <= breakMaxMinutes;
+    const iTol = isBreak ? breakTolerance : tol;
+
+    if (out == null || back == null) { incomplete = true; scores.push(0); continue; }
+    const s = scoreLate(back, out + dur, iTol, decay);
+    scores.push(s);
+    if (s < 100) tags.push(isBreak ? "Atraso Pausa" : "Atraso Almoço");
+  }
+
+  // 3) saída final — alvo = fim do último bloco
+  const last = p[2 * n - 1];
+  if (last == null) { incomplete = true; scores.push(0); }
+  else {
+    const res = scoreDeparture(last, sched[n - 1].end, tol, earlyGrace, decay);
+    scores.push(res.score);
+    if (res.type === "Early" && res.score < 100) tags.push("Saída Antecipada");
+    else if (res.type === "Late" && res.score < 100) tags.push("Atraso Saída");
   }
 
   const adherence = scores.length ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : 0;
 
-  if (incomplete) tags = ["Falta"];           // turno incompleto = falta parcial (desclassifica)
-  else if (tags.length === 0) tags = ["Ok"];
+  // turno incompleto = falta parcial; senão, sem tag = dia limpo
+  const finalTags: import("../types").DailyStatus[] =
+    incomplete ? ["Falta"] : tags.length === 0 ? ["Ok"] : tags;
 
-  return { ...r, expectedSchedule, status: tags, adherencePercentage: adherence };
+  return { ...r, expectedSchedule, status: finalTags, adherencePercentage: adherence };
 }
 
 /* ============================ processamento do colaborador ============================ */
@@ -146,12 +163,18 @@ export function processEmployees(
 ): Employee[] {
   return employees.map((emp) => {
     const { group } = effectiveGroup(params, emp);
-    const tol = group?.toleranceMinutes ?? params.global.toleranceMinutes;
+    const opts: ScoreOpts = {
+      tol: group?.toleranceMinutes ?? params.global.toleranceMinutes,
+      decay: params.global.decayPerMinute,
+      earlyGrace: group?.departureEarlyGrace ?? 0,
+      breakMaxMinutes: params.global.breakMaxMinutes,
+      breakTolerance: params.global.breakTolerance,
+    };
 
     let records = emp.records.map((r) => {
       // undefined = sem grupo (usa jornada do registro); string|null = definido pelo grupo
       const resolved = group ? group.scheduleByDay[r.dayOfWeek as Weekday] ?? null : undefined;
-      return processRecord(r, tol, resolved);
+      return processRecord(r, opts, resolved);
     });
 
     records = records.map((r) => {
@@ -181,10 +204,26 @@ export function processEmployees(
     const valid = records.filter((r) => !r.status.includes("Feriado") && !r.status.includes("Folga") && !r.status.includes("Férias") && !r.status.includes("Atestado Médico") && !r.status.includes("Home Office") && !r.status.includes("Abonado") && !r.status.includes("Aniversário") && !r.status.includes("Licença Casamento") && !r.status.includes("Não Contabilizado") && !r.status.includes("INSS") && !r.status.includes("Declaração"));
     const avg = valid.length ? valid.reduce((a, r) => a + r.adherencePercentage, 0) / valid.length : 0;
 
+    // Visão do mês: um dia ruim não define a pessoa. O que classifica é a
+    // PROPORÇÃO de dias pontuais (dia pontual = todas as batidas dentro da tolerância).
+    const { punctualDayMargin, punctualThreshold, regularThreshold } = params.global;
+    const evaluatedDays = valid.length;
+    const punctualDays = valid.filter((r) => r.adherencePercentage >= punctualDayMargin).length;
+    const punctualityRate = evaluatedDays ? (punctualDays / evaluatedDays) * 100 : 0;
+    const classification: Employee["classification"] =
+      evaluatedDays === 0 ? "Sem dados"
+      : punctualityRate >= punctualThreshold ? "Pontual"
+      : punctualityRate >= regularThreshold ? "Regular"
+      : "Irregular";
+
     return {
       ...emp,
       records,
       adherenceScore: parseFloat(avg.toFixed(1)),
+      evaluatedDays,
+      punctualDays,
+      punctualityRate: parseFloat(punctualityRate.toFixed(1)),
+      classification,
       isDisqualified,
       disqualificationReason: isDisqualified ? `Faltas em: ${faltas.map(f => brDate(f.date)).join(", ")}` : undefined,
     };

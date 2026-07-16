@@ -21,9 +21,10 @@ function rec(
     date,
     dayOfWeek: dow,
     expectedSchedule: schedule,
+    punches: [in1, out1, in2, out2],
     checkIn1: in1, checkOut1: out1, checkIn2: in2, checkOut2: out2,
     totalNormalHours: "", totalFaultDays: 0, delayAndFaultHours: "", excusedHours: "", overtime: "", bankBalance: "",
-    status: "Presente", adherencePercentage: 0,
+    status: ["Ok"], adherencePercentage: 0,
   };
 }
 

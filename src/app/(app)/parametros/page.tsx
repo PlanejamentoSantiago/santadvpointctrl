@@ -23,7 +23,7 @@ export default function ParametrosPage() {
   const { toast } = useToast();
   const gTol = cfg.global.toleranceMinutes;
 
-  const setGlobalTol = (v: number) => update({ ...cfg, global: { toleranceMinutes: v } });
+  const setGlobalTol = (v: number) => update({ ...cfg, global: { ...cfg.global, toleranceMinutes: v } });
 
   const setGroup = (id: string, patch: Partial<WorkGroup>) =>
     update({ ...cfg, groups: cfg.groups.map((g) => (g.id === id ? { ...g, ...patch } : g)) });
@@ -40,7 +40,7 @@ export default function ParametrosPage() {
     const color = GROUP_COLORS[cfg.groups.length % GROUP_COLORS.length];
     const base = "08:00-12:00 13:00-18:00";
     const ng: WorkGroup = {
-      id: `g-${Date.now()}`, name: "Novo grupo", color, toleranceMinutes: gTol,
+      id: `g-${Date.now()}`, name: "Novo grupo", color, toleranceMinutes: gTol, departureEarlyGrace: 0,
       scheduleByDay: { SEG: base, TER: base, QUA: base, QUI: base, SEX: base, SAB: null, DOM: null },
     };
     update({ ...cfg, groups: [...cfg.groups, ng] });

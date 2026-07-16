@@ -12,6 +12,37 @@ function getDayOfWeek(dateStr: string) {
   return days[date.getDay()];
 }
 
+/**
+ * Lê a tabela "HORÁRIO DE TRABALHO" do cabeçalho do funcionário:
+ *   HORÁRIO DE TRABALHO ENT.1 SAÍ.1 ENT.2 SAÍ.2
+ *   SEG 08:00 12:00 13:00 18:00 ... SEX 08:00 12:00 13:00 17:00  SAB DOM
+ * Devolve { SEG: "08:00-12:00 13:00-18:00", ..., SAB: null }
+ */
+export function parseWeekSchedule(block: string): Record<string, string | null> {
+  const res: Record<string, string | null> = {};
+  const seg = block.match(/HOR[ÁA]RIO DE TRABALHO([\s\S]*?)\bDIA\b/);
+  if (!seg) return res;
+
+  const re = /\b(SEG|TER|QUA|QUI|SEX|SAB|DOM)\b([^A-ZÀ-Ú]*)/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(seg[1]))) {
+    const times = m[2].match(/\d{1,2}:\d{2}/g) || [];
+    // pares (ENT/SAÍ) viram blocos: 8 horários = 4 blocos (cobrança), 4 = 2 blocos (adm)
+    const blocks: string[] = [];
+    for (let i = 0; i + 1 < times.length; i += 2) blocks.push(`${times[i]}-${times[i + 1]}`);
+    res[m[1]] = blocks.length ? blocks.join(" ") : null; // sem horário = folga
+  }
+  return res;
+}
+
+/** Extrai a coluna PREVISTO da linha do dia: "20/05/2026 - QUA  08:00-12:00 13:00-18:00  08:05 (C)..." */
+export function parsePrevisto(line: string): string | null {
+  const m = line.match(
+    /^\d{2}\/\d{2}\/\d{4}\s*-\s*[A-Z]{3}\s+((?:\d{1,2}:\d{2}-\d{1,2}:\d{2}\s*)+)/,
+  );
+  return m ? m[1].trim().replace(/\s+/g, " ") : null;
+}
+
 async function parsePdf(file: File): Promise<Employee[]> {
   const pdfjsLib = await import("pdfjs-dist");
   // O worker do pdf.js v4+ é um ES module, e o navegador só permite module
@@ -44,11 +75,16 @@ async function parsePdf(file: File): Promise<Employee[]> {
     const deptMatch = block.match(/NOME DO DEPARTAMENTO:\s*(.*?)\s+HORÁRIO DE TRABALHO/);
     const dept = deptMatch ? deptMatch[1].trim() : "GERAL";
 
+    // horário real do funcionário, lido do cabeçalho do PDF (varia por dia da semana)
+    const week = parseWeekSchedule(block);
+    const weekDefault =
+      week.SEG || week.TER || week.QUA || week.QUI || week.SEX || "08:00-12:00 13:00-18:00";
+
     const emp: Employee = {
       id: `emp-${generateId()}`,
       name, pis, cpf: "00000000000", role, department: dept,
       admissionDate: "2020-01-01",
-      expectedSchedule: "08:00-12:00 13:00-18:00",
+      expectedSchedule: weekDefault,
       adherenceScore: 0, isDisqualified: false, records: []
     };
 
@@ -72,7 +108,7 @@ async function parsePdf(file: File): Promise<Employee[]> {
       const rawDate = dateMatch[1];
       const formattedDate = `${rawDate.slice(6, 10)}-${rawDate.slice(3, 5)}-${rawDate.slice(0, 2)}`;
       
-      let in1 = null, out1 = null, in2 = null, out2 = null;
+      let punches: (string | null)[] = [];
       let status: TimeRecord["status"] = ["Ok"];
       let justification: string | undefined;
       
@@ -89,12 +125,11 @@ async function parsePdf(file: File): Promise<Employee[]> {
           justification = feriadoMatch[0].trim();
         }
       } else {
+        // todas as batidas do dia (só contam horários com flag "(C)", "(P)"… — assim
+        // os totais no fim da linha, que vêm sem flag, não são confundidos com batida)
         const pMatch = line.match(/(\d{2}:\d{2})\s*\([A-Z]\)|\bFalta\b/gi) || [];
         const clean = (m?: string) => m ? (m.toLowerCase().includes("falta") ? null : m.slice(0, 5)) : null;
-        in1 = clean(pMatch[0]);
-        out1 = clean(pMatch[1]);
-        in2 = clean(pMatch[2]);
-        out2 = clean(pMatch[3]);
+        punches = pMatch.map((p) => clean(p));
         
         if (line.match(/HOME OFFICE/i)) {
           status = ["Home Office"];
@@ -119,13 +154,25 @@ async function parsePdf(file: File): Promise<Employee[]> {
       const dayOfWeek = getDayOfWeek(formattedDate);
       const isOff = status.includes("Folga") || status.includes("Feriado") || status.includes("Férias") || status.includes("Atestado Médico") || status.includes("Home Office") || status.includes("Abonado") || status.includes("Aniversário") || status.includes("Licença Casamento") || status.includes("Não Contabilizado") || status.includes("INSS") || status.includes("Declaração") || dayOfWeek === "SAB" || dayOfWeek === "DOM";
 
+      // jornada do dia: PREVISTO da própria linha > tabela do cabeçalho > padrão
+      const previsto = parsePrevisto(line);
+      const schedOfDay = previsto ?? week[dayOfWeek] ?? emp.expectedSchedule;
+
+      // a jornada diz quantas batidas o dia deveria ter (2 por bloco)
+      const expectedPunches = (schedOfDay.match(/\d{1,2}:\d{2}/g) || []).length;
+      if (expectedPunches && punches.length < expectedPunches) {
+        punches = [...punches, ...Array(expectedPunches - punches.length).fill(null)];
+      }
+
       emp.records.push({
         id: `rec-${generateId()}`,
         employeeId: emp.id,
         date: formattedDate,
         dayOfWeek,
-        expectedSchedule: isOff ? "" : emp.expectedSchedule,
-        checkIn1: in1, checkOut1: out1, checkIn2: in2, checkOut2: out2,
+        expectedSchedule: isOff ? "" : schedOfDay,
+        punches,
+        checkIn1: punches[0] ?? null, checkOut1: punches[1] ?? null,
+        checkIn2: punches[2] ?? null, checkOut2: punches[3] ?? null,
         totalNormalHours: "", totalFaultDays: 0, delayAndFaultHours: "",
         excusedHours: "", overtime: "", bankBalance: "",
         status, adherencePercentage: 0, justification,
@@ -221,6 +268,7 @@ export async function parseFile(file: File): Promise<Employee[]> {
                 date: formattedDate,
                 dayOfWeek,
                 expectedSchedule: isOff ? "" : emp.expectedSchedule,
+              punches: [in1, out1, in2, out2],
               checkIn1: in1,
               checkOut1: out1,
               checkIn2: in2,
